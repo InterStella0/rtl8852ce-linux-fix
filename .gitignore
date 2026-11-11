@@ -1,0 +1,8 @@
+tests/test_core
+*.o
+*.ko
+*.mod
+*.mod.c
+*.cmd
+Module.symvers
+modules.order

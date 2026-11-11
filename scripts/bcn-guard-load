@@ -1,0 +1,82 @@
+#!/bin/sh
+# bcn-guard-load - load bcn_guard, with a crash-loop breaker.
+#
+# The module only ever adds a filter in front of mac80211, so the worst a
+# missing/unloadable module can do is "Wi-Fi behaves like a stock kernel".
+# The one thing that must never happen is a boot loop, so:
+#
+#   start  writes a marker, loads the module
+#   armed  (60 s later) removes the marker: the machine survived
+#   stop   (clean shutdown / systemctl stop) removes the marker and unloads
+#
+# If the marker is still there at the next start, the machine went down hard
+# right after loading the module. The guard is then "tripped": it stays off
+# for this kernel + module build until one of them changes or you re-arm it:
+#
+#   sudo rm /var/lib/bcn-guard/tripped && sudo systemctl restart bcn-guard
+#
+# You can also boot with  bcn_guard=off  on the kernel command line.
+set -u
+
+state=/var/lib/bcn-guard
+marker=$state/loading
+tripped=$state/tripped
+self=$0
+
+log() { echo "bcn-guard: $*"; }
+
+case "${1:-start}" in
+start)
+	mkdir -p "$state"
+	if grep -qw 'bcn_guard=off' /proc/cmdline; then
+		log "disabled on the kernel command line; Wi-Fi runs stock"
+		exit 0
+	fi
+	if ! modinfo bcn_guard > /dev/null 2>&1; then
+		log "no module for kernel $(uname -r) (headers missing or DKMS build failed); Wi-Fi runs stock"
+		exit 0
+	fi
+	id="$(uname -r) $(modinfo -F srcversion bcn_guard 2> /dev/null)"
+
+	if [ -e "$marker" ]; then
+		mv -f "$marker" "$tripped"
+	fi
+	if [ -e "$tripped" ]; then
+		if [ "$(cat "$tripped" 2> /dev/null)" = "$id" ]; then
+			log "TRIPPED: the last boot went down within 60 s of loading the module."
+			log "Not loading it; Wi-Fi runs stock. Re-arm: rm $tripped && systemctl restart bcn-guard"
+			exit 0
+		fi
+		rm -f "$tripped"	# different kernel or module build: try again
+	fi
+
+	if lsmod | grep -q '^bcn_guard '; then
+		log "already loaded"
+		exit 0
+	fi
+
+	echo "$id" > "$marker"
+	sync "$marker" 2> /dev/null || sync
+	if ! modprobe bcn_guard; then
+		rm -f "$marker"
+		log "modprobe failed; Wi-Fi runs stock"
+		exit 0
+	fi
+	systemd-run --quiet --collect --unit=bcn-guard-armed --on-active=60 \
+		"$self" armed 2> /dev/null || (sleep 60 && "$self" armed) &
+	log "loaded"
+	;;
+armed)
+	rm -f "$marker"
+	;;
+stop)
+	rm -f "$marker"
+	systemctl stop bcn-guard-armed.timer 2> /dev/null
+	modprobe -r bcn_guard 2> /dev/null
+	exit 0
+	;;
+*)
+	echo "usage: $0 start|armed|stop" >&2
+	exit 2
+	;;
+esac

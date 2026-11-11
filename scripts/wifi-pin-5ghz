@@ -1,0 +1,56 @@
+#!/bin/bash
+# wifi-pin-5ghz - keep a NetworkManager Wi-Fi profile on the 5 GHz band.
+#
+# Why: on the RTL8852CE combo chip, Wi-Fi on 2.4 GHz shares spectrum and an
+# antenna path with Bluetooth, and a router with band steering keeps pushing
+# the client between its 2.4 GHz and 5 GHz radios. Restricting the profile to
+# 5 GHz makes wpa_supplicant refuse 2.4 GHz steering targets and reconnect
+# straight to the 5 GHz radio.
+#
+# Only the chosen profile is changed (one NetworkManager property). Other
+# networks are unaffected. No root needed on a normal desktop session.
+#
+#   wifi-pin-5ghz show            current state
+#   wifi-pin-5ghz apply [name]    restrict the active (or named) profile to 5 GHz
+#   wifi-pin-5ghz undo  [name]    remove the restriction
+set -euo pipefail
+
+active_wifi() {
+	nmcli -t -f UUID,TYPE connection show --active | awk -F: '$2 == "802-11-wireless" {print $1; exit}'
+}
+
+profile=${2:-$(active_wifi)}
+[ -n "$profile" ] || { echo "no active Wi-Fi connection; pass a profile name"; exit 1; }
+get() { nmcli -g "$1" connection show "$profile"; }
+ssid=$(get 802-11-wireless.ssid)
+iface=$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2 == "wifi" {print $1; exit}')
+
+case "${1:-show}" in
+show)
+	band=$(get 802-11-wireless.band)
+	echo "profile : $(get connection.id) ($profile)"
+	echo "band pin: ${band:-none (2.4 GHz and 5 GHz both allowed)}"
+	echo "radios broadcasting \"$ssid\":"
+	nmcli -f IN-USE,BSSID,SSID,CHAN,FREQ,RATE,SIGNAL device wifi list --rescan no |
+		awk -v s="$ssid" 'NR == 1 || index($0, s)'
+	;;
+apply)
+	if ! nmcli -t -f SSID,FREQ device wifi list --rescan yes | awk -F: -v s="$ssid" '$1 == s && $2 + 0 >= 4900 {found = 1} END {exit !found}'; then
+		echo "no 5 GHz radio for \"$ssid\" is visible right now; not pinning (you would lose the connection)"
+		exit 1
+	fi
+	nmcli connection modify "$profile" 802-11-wireless.band a
+	echo "pinned \"$ssid\" to 5 GHz; re-activating (Wi-Fi blips for a few seconds)..."
+	nmcli connection up "$profile" ifname "$iface" > /dev/null
+	iw dev "$iface" link | grep -E 'Connected|freq' || true
+	echo "undo with: $0 undo"
+	;;
+undo)
+	nmcli connection modify "$profile" 802-11-wireless.band ""
+	echo "5 GHz pin removed from \"$ssid\" (takes effect on the next reconnect)"
+	;;
+*)
+	sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+	exit 2
+	;;
+esac
