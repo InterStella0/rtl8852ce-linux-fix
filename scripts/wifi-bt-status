@@ -43,7 +43,7 @@ h "Events since: $since"
 log=$(journalctl --no-pager -o cat --since "$since" 2> /dev/null)
 n() { printf '%s\n' "$log" | grep -cE "$1"; }
 row() { printf '  %6s  %s\n' "$1" "$2"; }
-row "$(n 'appears to change mode')"                    "Wi-Fi: kernel disconnected because of a bad beacon   (want 0)"
+row "$(n 'appears to change mode \(expected')"                  "Wi-Fi: kernel disconnected because of a bad beacon   (want 0)"
 row "$(n 'bcn_guard: .*: dropped beacon')"             "Wi-Fi: bad beacons hidden by the guard (log lines are rate-limited)"
 row "$(n 'bcn_guard: .*letting them through')"         "Wi-Fi: guard gave up on a persistent change"
 row "$(n 'Trying to authenticate with .*freq=24')"     "Wi-Fi: joined the 2.4 GHz radio                      (want 0)"

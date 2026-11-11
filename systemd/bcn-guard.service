@@ -1,5 +1,5 @@
 [Unit]
-Description=Beacon guard: hide corrupt Wi-Fi beacons from mac80211 (prevents "AP appears to change mode" disconnects)
+Description=Beacon guard: hide corrupt Wi-Fi beacons from mac80211
 Documentation=file:///usr/local/share/doc/bcn-guard/README.md
 Before=NetworkManager.service wpa_supplicant.service iwd.service
 
