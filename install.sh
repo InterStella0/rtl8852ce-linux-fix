@@ -28,7 +28,7 @@ if dkms status "$name/$ver" 2> /dev/null | grep -q .; then
 fi
 rm -rf "$src"
 install -d "$src"
-install -m 0644 "$here"/module/{bcn_guard.c,bcn_core.h,Makefile,dkms.conf} "$src/"
+install -m 0644 "$here"/module/{bcn_guard.c,bcn_core.h,Kbuild,Makefile,dkms.conf} "$src/"
 dkms add "$name/$ver" > /dev/null
 
 # running kernel first (must work), then any other kernel that has headers

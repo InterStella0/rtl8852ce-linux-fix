@@ -1,10 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0
-ifneq ($(KERNELRELEASE),)
-
-obj-m := bcn_guard.o
-
-else
-
+# Wrapper only: the kernel build system reads ./Kbuild, not this file.
 KVER ?= $(shell uname -r)
 KDIR ?= /lib/modules/$(KVER)/build
 
@@ -22,5 +17,3 @@ clean:
 	$(MAKE) -C $(KDIR) M=$(CURDIR) clean
 
 .PHONY: all clean
-
-endif
