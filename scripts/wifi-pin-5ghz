@@ -7,11 +7,11 @@
 # 5 GHz makes wpa_supplicant refuse 2.4 GHz steering targets and reconnect
 # straight to the 5 GHz radio.
 #
-# Only the chosen profile is changed (one NetworkManager property). Other
-# networks are unaffected. No root needed on a normal desktop session.
+# Only the profiles of that one network are changed (one NetworkManager
+# property each). Other networks are unaffected. No root needed on a normal desktop session.
 #
 #   wifi-pin-5ghz show            current state
-#   wifi-pin-5ghz apply [name]    restrict the active (or named) profile to 5 GHz
+#   wifi-pin-5ghz apply [name]    restrict the active (or named) network to 5 GHz
 #   wifi-pin-5ghz undo  [name]    remove the restriction
 set -euo pipefail
 
@@ -25,11 +25,22 @@ get() { nmcli -g "$1" connection show "$profile"; }
 ssid=$(get 802-11-wireless.ssid)
 iface=$(nmcli -t -f DEVICE,TYPE device | awk -F: '$2 == "wifi" {print $1; exit}')
 
+# NetworkManager may hold several saved profiles for one network and pick any
+# of them at boot (by autoconnect priority), so the pin goes on all of them.
+same_ssid_profiles() {
+	nmcli -t -f UUID,TYPE connection show | awk -F: '$2 == "802-11-wireless" {print $1}' |
+		while read -r u; do
+			[ "$(nmcli -g 802-11-wireless.ssid connection show "$u")" = "$ssid" ] && echo "$u"
+		done
+}
+
 case "${1:-show}" in
 show)
-	band=$(get 802-11-wireless.band)
-	echo "profile : $(get connection.id) ($profile)"
-	echo "band pin: ${band:-none (2.4 GHz and 5 GHz both allowed)}"
+	echo "saved profiles for \"$ssid\":"
+	for u in $(same_ssid_profiles); do
+		band=$(nmcli -g 802-11-wireless.band connection show "$u")
+		echo "  $u  band pin: ${band:-none (2.4 GHz and 5 GHz both allowed)}$([ "$u" = "$profile" ] && echo '  <- in use')"
+	done
 	echo "radios broadcasting \"$ssid\":"
 	nmcli -f IN-USE,BSSID,SSID,CHAN,FREQ,RATE,SIGNAL device wifi list --rescan no |
 		awk -v s="$ssid" 'NR == 1 || index($0, s)'
@@ -39,14 +50,18 @@ apply)
 		echo "no 5 GHz radio for \"$ssid\" is visible right now; not pinning (you would lose the connection)"
 		exit 1
 	fi
-	nmcli connection modify "$profile" 802-11-wireless.band a
+	for u in $(same_ssid_profiles); do
+		nmcli connection modify "$u" 802-11-wireless.band a
+	done
 	echo "pinned \"$ssid\" to 5 GHz; re-activating (Wi-Fi blips for a few seconds)..."
 	nmcli connection up "$profile" ifname "$iface" > /dev/null
 	iw dev "$iface" link | grep -E 'Connected|freq' || true
 	echo "undo with: $0 undo"
 	;;
 undo)
-	nmcli connection modify "$profile" 802-11-wireless.band ""
+	for u in $(same_ssid_profiles); do
+		nmcli connection modify "$u" 802-11-wireless.band ""
+	done
 	echo "5 GHz pin removed from \"$ssid\" (takes effect on the next reconnect)"
 	;;
 *)
