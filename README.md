@@ -4,6 +4,13 @@ Stops the random Wi-Fi drop-outs and the Bluetooth audio breakdowns on the
 Realtek **RTL8852CE** Wi-Fi/Bluetooth combo card under Linux, **without
 replacing, patching or reconfiguring any driver or firmware**.
 
+> [!WARNING]
+> **Disclaimer: this is entirely vibecoded, idk how this works.** Every line
+> here, including the kernel module, the tests and this README, was written by
+> an AI (Claude). It has only been run on my own machine and my own router.
+> It loads a kernel module, so read it before you trust it, and use it at
+> your own risk.
+
 It is two small things:
 
 | Piece | What it is | What it stops |
